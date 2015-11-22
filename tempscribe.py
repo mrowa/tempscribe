@@ -57,10 +57,10 @@ pos = startpos
 # ion is 84x48 pixels, so the screen can learn 84 temperatures
 height = 48
 width = 84
-chartwidth = 10
-list = collections.deque(maxlen=width)
+chartwidth = 74
+list = collections.deque(maxlen=chartwidth)
 # counter is to keep the length of deque (which is not present)
-counter = 0
+counter = -1
 
 # how much space to leave for (in degrees celsius)
 tolerance = 0.5
@@ -80,7 +80,7 @@ while True:
 
 	list.append(temp)
 
-	if counter < width - 1:
+	if counter < chartwidth - 1:
 		counter += 1
 
 	# Clear image buffer.
@@ -95,7 +95,7 @@ while True:
 
 	for index, temp in enumerate(list):
 		y = height - (temp - mintemp) / difftemp * height
-		x = width -1 - counter + index
+		x = width - counter + index -1
 		# counter checks how many elements are in list,
 		#draw.point([index, y])
 		draw.line(((x, y), (x, height)))
