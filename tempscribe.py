@@ -8,6 +8,7 @@ import math
 import time
 import re
 import collections
+import sqlite3
 
 import Adafruit_Nokia_LCD as LCD
 import Adafruit_GPIO.SPI as SPI
@@ -15,6 +16,44 @@ import Adafruit_GPIO.SPI as SPI
 from PIL import Image
 from PIL import ImageFont
 from PIL import ImageDraw
+
+restartDatabase = False
+
+# create sqlite table if not exists
+sqlcreatestring = """PRAGMA foreign_keys=OFF;
+BEGIN TRANSACTION;
+
+DROP TABLE IF EXISTS reads;
+DROP TABLE IF EXISTS sensor;
+
+CREATE TABLE IF NOT EXISTS sensor 
+(
+	id integer primary key not null,
+	address text not null, 
+	name text not null
+);
+CREATE TABLE IF NOT EXISTS reads 
+(
+	sensor_id integer not null,
+	timestamp real not null,
+	value float not null,
+	FOREIGN KEY (sensor_id) REFERENCES sensor(id)
+);
+
+INSERT INTO sensor VALUES (1, '28-031571fb73ff', 'luźny');
+
+COMMIT;"""
+
+connection = sqlite3.connect('tempscribe.data')
+
+if restartDatabase:
+	print 'rebuilding database'
+	connection.executescript(sqlcreatestring)
+	print 'database rebuilded'
+else:
+	print 'not rebuilding database'
+
+cursor = connection.cursor()
 
 # Raspberry Pi hardware SPI config:
 DC = 23
@@ -78,6 +117,13 @@ while True:
 	val = float(strval)
 	temp = val / 1000
 
+	# save to sqlite
+	cursor.execute(
+	"INSERT INTO reads (sensor_id, timestamp, value)  VALUES (?,datetime('now'),?)",
+	(1, temp))
+	
+	connection.commit()
+
 	list.append(temp)
 
 	if counter < chartwidth - 1:
@@ -106,10 +152,3 @@ while True:
 	# Draw the image buffer.
 	disp.image(image)
 	disp.display()
-	# Move position for next frame.
-#	pos -= 2
-	# Start over if text has scrolled completely off left side of screen.
-#	if pos < -maxwidth:
-#		pos = startpos
-	# Pause briefly before drawing next frame.
-#	time.sleep(1.0)
