@@ -104,14 +104,15 @@ counter = -1
 # how much space to leave for (in degrees celsius)
 tolerance = 0.5
 
+# thermometer device file
+tempfile = open('/sys/bus/w1/devices/28-031571fb73ff/w1_slave', 'r')
+
 # Animate text moving in sine wave.
 print 'Press Ctrl-C to quit.'
 while True:
-
-	# read temperature from 1-wire devices (right now we use constant file
-	# , later on we need more wires)
-	f = open('/sys/bus/w1/devices/28-031571fb73ff/w1_slave', 'r')
-	str = f.read()
+	# read w1 thermometer data file
+	tempfile.seek(0)
+	str = tempfile.read()
 
 	strval = re.findall(r'\d+', str)[-1]
 	val = float(strval)
@@ -136,8 +137,6 @@ while True:
 	mintemp = min(list) -0.5
 	maxtemp = max(list) +0.5
 	difftemp = maxtemp - mintemp 
-
-#	print mintemp, maxtemp, difftemp
 
 	for index, temp in enumerate(list):
 		y = height - (temp - mintemp) / difftemp * height
