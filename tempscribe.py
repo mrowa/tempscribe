@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS reads
 (
 	sensor_id integer not null,
 	timestamp real not null,
-	value float not null,
+	value real not null,
 	FOREIGN KEY (sensor_id) REFERENCES sensor(id)
 );
 
@@ -85,10 +85,6 @@ font = ImageFont.load_default()
 # Create drawing object.
 draw = ImageDraw.Draw(image)
 
-# Define text and get total width.
-text = 'Love my sweet Kitty Kacha <3 :3'
-maxwidth, height = draw.textsize(text, font=font)
-
 # Set starting position.
 startpos = 83
 pos = startpos
@@ -120,7 +116,7 @@ while True:
 
 	# save to sqlite
 	cursor.execute(
-	"INSERT INTO reads (sensor_id, timestamp, value)  VALUES (?,datetime('now'),?)",
+	"INSERT INTO reads (sensor_id, timestamp, value)  VALUES (?,julianday('now'),?)",
 	(1, temp))
 	
 	connection.commit()
