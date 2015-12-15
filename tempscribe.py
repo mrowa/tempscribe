@@ -77,7 +77,7 @@ disp.display()
 image = Image.new('1', (LCD.LCDWIDTH, LCD.LCDHEIGHT))
 
 # Load default font.
-font = ImageFont.load_default()
+font = ImageFont.truetype('/usr/share/fonts/truetype/freefont/FreeSans.ttf', 10)
 
 # Alternatively load a TTF font.
 # Some nice fonts to try: http://www.dafont.com/bitmap.php
@@ -93,7 +93,7 @@ pos = startpos
 # ion is 84x48 pixels, so the screen can learn 84 temperatures
 height = 48
 width = 84
-chartwidth = 74
+chartwidth = 84-20
 list = collections.deque(maxlen=chartwidth)
 # counter is to keep the length of deque (which is not present)
 counter = -1
@@ -108,9 +108,9 @@ print 'Press Ctrl-C to quit.'
 while True:
 	# read w1 thermometer data file
 	tempfile.seek(0)
-	str = tempfile.read()
+	strf = tempfile.read()
 
-	strval = re.findall(r'\d+', str)[-1]
+	strval = re.findall(r'\d+', strf)[-1]
 	val = float(strval)
 	temp = val / 1000
 
@@ -132,23 +132,27 @@ while True:
 
 	mintemp = min(list)
 	maxtemp = max(list)
-	minshown = mintemp -0.5
-	maxshown = maxtemp +0.5
+	minshown = mintemp - tolerance
+	maxshown = maxtemp + tolerance
 	difftemp = maxtemp - mintemp 
 	diffshown = maxshown - minshown
 
+	print datetime.now(), 'temp', list[0], 'min', mintemp, 'max', maxtemp
+
+	# draw the chart
 	for index, temp in enumerate(list):
 		y = height - (temp - minshown) / diffshown * height
 		x = width - counter + index -1
 		# counter checks how many elements are in list,
-		#draw.point([index, y])
+		#draw.point([x, y])
 		draw.line(((x, y), (x, height)))
-		if index == 0:
-			print datetime.now(), 'temp', temp, 'min', mintemp, 'max', maxtemp
 
-	
-
+	draw.text((0,0), str(round(maxtemp,1)), font=font, fill=0)
+	draw.text((0,37), str(round(mintemp,1)), font=font, fill=0)
+	draw.text((0,12), str(round(temp,1)), font=font, fill=0)
+	draw.text((1,22), 'M', font=font, fill=0)
 
 	# Draw the image buffer.
 	disp.image(image)
 	disp.display()
+
