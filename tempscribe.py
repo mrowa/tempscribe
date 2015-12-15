@@ -9,6 +9,7 @@ import time
 import re
 import collections
 import sqlite3
+from datetime import datetime
 
 import Adafruit_Nokia_LCD as LCD
 import Adafruit_GPIO.SPI as SPI
@@ -103,7 +104,6 @@ tolerance = 0.5
 # thermometer device file
 tempfile = open('/sys/bus/w1/devices/28-031571fb73ff/w1_slave', 'r')
 
-# Animate text moving in sine wave.
 print 'Press Ctrl-C to quit.'
 while True:
 	# read w1 thermometer data file
@@ -130,18 +130,23 @@ while True:
 	draw.rectangle((0,0,83,47), outline=255, fill=255)
 	# Enumerate characters and draw them offset vertically based on a sine wave.
 
-	mintemp = min(list) -0.5
-	maxtemp = max(list) +0.5
+	mintemp = min(list)
+	maxtemp = max(list)
+	minshown = mintemp -0.5
+	maxshown = maxtemp +0.5
 	difftemp = maxtemp - mintemp 
+	diffshown = maxshown - minshown
 
 	for index, temp in enumerate(list):
-		y = height - (temp - mintemp) / difftemp * height
+		y = height - (temp - minshown) / diffshown * height
 		x = width - counter + index -1
 		# counter checks how many elements are in list,
 		#draw.point([index, y])
 		draw.line(((x, y), (x, height)))
 		if index == 0:
-			print 'temp', temp, 'y', y, 'min', mintemp, 'max', maxtemp
+			print datetime.now(), 'temp', temp, 'min', mintemp, 'max', maxtemp
+
+	
 
 
 	# Draw the image buffer.
