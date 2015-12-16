@@ -101,26 +101,61 @@ counter = -1
 # how much space to leave for (in degrees celsius)
 tolerance = 0.5
 
+# main slave to read temp from
+defaultslave = '28-031571fb73ff'
+
+# open w1 bus master and read slaves
+masterfile = open('/sys/bus/w1/drivers/w1_master_driver/w1_bus_master1/w1_master_slaves', 'r')
+mastercontent = masterfile.read()
+slaves = mastercontent.split()
+
+thermfilenames = map(lambda slave: '/sys/bus/w1/devices/'+slave+'/w1_slave', slaves)
+thermfiles = map(lambda filename: open(filename, 'r'), thermfilenames)
+
+slaveids = {}
+slavefiles = {}
+
+for slave in slaves:
+	cursor.execute('SELECT id FROM sensor WHERE address LIKE ? LIMIT 1', (slave,))
+	id = cursor.fetchone()
+	if id is None:
+		cursor.execute('INSERT INTO sensor (address, name) VALUES (?, ?)', (slave, 'autoadded'))
+		cursor.commit()
+		cursor.execute('SELECT id FROM sensor WHERE address LIKE ? LIMIT 1', (slave,))
+		id = cursor.fetchone()
+	slaveids[slave] = int(id[0])
+	filename = '/sys/bus/w1/devices/'+slave+'/w1_slave'
+	slavefile = open(filename, 'r')
+	slavefiles[slave] = slavefile
+
 # thermometer device file
 tempfile = open('/sys/bus/w1/devices/28-031571fb73ff/w1_slave', 'r')
+
+temps = {}
 
 print 'Press Ctrl-C to quit.'
 while True:
 	# read w1 thermometer data file
-	tempfile.seek(0)
-	strf = tempfile.read()
+	for slave in slaves:
+		thermfile = slavefiles[slave]
+		id = slaveids[slave]
+		thermfile.seek(0)
+		strf = thermfile.read()
 
-	strval = re.findall(r'\d+', strf)[-1]
-	val = float(strval)
-	temp = val / 1000
+		strval = re.findall(r'\d+', strf)[-1]
+		val = float(strval)
+		temp = val / 1000
+		temps[slave] = temp
 
-	# save to sqlite
-	cursor.execute(
-	"INSERT INTO reads (sensor_id, timestamp, value)  VALUES (?,julianday('now'),?)",
-	(1, temp))
+		# save to sqlite
+		cursor.execute(
+		"INSERT INTO reads (sensor_id, timestamp, value)  VALUES (?,julianday('now'),?)",
+		(id, temp))
 	
-	connection.commit()
+		connection.commit()
 
+	
+	temp = temps[defaultslave]
 	list.append(temp)
 
 	if counter < chartwidth - 1:
