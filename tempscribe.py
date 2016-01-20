@@ -14,9 +14,23 @@ from datetime import datetime
 import Adafruit_Nokia_LCD as LCD
 import Adafruit_GPIO.SPI as SPI
 
+import RPi.GPIO as GPIO
+
 from PIL import Image
 from PIL import ImageFont
 from PIL import ImageDraw
+
+# here - we add elements to work with the GPIO
+# BCM means pin numbers not as on board, but as on CPU pinouts.
+GPIO.setmode(GPIO.BCM) 
+GPIO.setup(20, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+GPIO.setup(21, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+
+def printFunc(channel):
+	print 'button pressed', channel
+
+GPIO.add_event_detect(20, GPIO.FALLING, callback=printFunc, bouncetime=300)
+GPIO.add_event_detect(21, GPIO.FALLING, callback=printFunc, bouncetime=300)
 
 restartDatabase = False
 
@@ -147,6 +161,9 @@ while True:
 		temp = val / 1000
 		temps[slave] = temp
 
+		# pins... just debug
+		# print 'input 20', GPIO.input(20), '21', GPIO.input(21)
+
 		# save to sqlite
 		cursor.execute(
 		"INSERT INTO reads (sensor_id, timestamp, value)  VALUES (?,julianday('now'),?)",
@@ -191,3 +208,5 @@ while True:
 	disp.image(image)
 	disp.display()
 
+
+GPIO.cleanup()
