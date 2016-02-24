@@ -23,14 +23,134 @@ from PIL import ImageDraw
 # here - we add elements to work with the GPIO
 # BCM means pin numbers not as on board, but as on CPU pinouts.
 GPIO.setmode(GPIO.BCM) 
-GPIO.setup(20, GPIO.IN, pull_up_down = GPIO.PUD_UP)
-GPIO.setup(21, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+GPIO.setup(14, GPIO.IN, pull_up_down = GPIO.PUD_DOWN)
+GPIO.setup(15, GPIO.IN, pull_up_down = GPIO.PUD_DOWN)
+GPIO.setup(18, GPIO.IN, pull_up_down = GPIO.PUD_DOWN)
+
+def printChart(elements):
+	print 'printChart', getMode(), 'count', len(elements)
+	draw.rectangle((0,0,83,47), outline=255, fill=255)
+
+	if not len(elements):
+		elements = [1,1]
+
+	minElem = min(elements)
+	maxElem = max(elements)
+	minShown = minElem - tolerance
+	maxShown = maxElem + tolerance
+	diffTemp = maxElem - minElem
+	diffShown = maxShown - minShown
+	count = len(elements)
+
+	#print minElem, maxElem, minShown, maxShown, diffTemp, diffShown, count
+
+	for index, val in enumerate(elements):
+		y = height - (val - minShown) / diffShown * height
+		x = width - count + index - 1
+		draw.line(((x, y), (x, height)))
+
+	currTimes = -(times[0] -1)
+	timestr = str(currTimes)
+	if currTimes > 0:
+		timestr = '+' + timestr		
+
+	draw.text((0,0), str(round(maxElem,1)), font=font, fill=0)
+	draw.text((0,37), str(round(minElem,1)), font=font, fill=0)
+	draw.text((0,12), str(timestr), font=font, fill=0)
+	draw.text((1,22), getMode(), font=font, fill=0)
+
+	disp.image(image)
+	disp.display()
+	
 
 def printFunc(channel):
 	print 'button pressed', channel
 
-GPIO.add_event_detect(20, GPIO.FALLING, callback=printFunc, bouncetime=300)
-GPIO.add_event_detect(21, GPIO.FALLING, callback=printFunc, bouncetime=300)
+def changeModeClicked(channel):
+	if channel == 14:
+		print 'channel 14 run'
+		changeMode()
+
+# this is current mode of operation: M, Q, H, D, W (minute, quarter, hour, day, week)
+mode = ['M'];
+
+def getMode():
+	return mode[0]
+
+def isMode(testedMode):
+	return mode[0] == testedMode
+
+def setMode(newMode):
+	mode[0] = newMode
+
+modes = {
+	'Q': '(24*4)',
+	'H': '24',
+	'D': '1',
+	'W': '(1.0/7)'
+}
+
+historySQL = """SELECT AVG(value) FROM reads
+WHERE
+timestamp >= julianday('now') - (1.0 / ?) * ?
+AND timestamp < julianday('now') - (1.0 / ?) * (? - 1)
+AND sensor_id = 1
+GROUP BY CAST(timestamp * ? * ?  as int), sensor_id
+ORDER BY timestamp DESC;"""
+
+times = [1]
+
+def readData():
+	mode = getMode()
+	modeTime = modes[mode]
+	newConn = sqlite3.connect('tempscribe.data')
+	curs = newConn.cursor()
+	curs.execute(historySQL, (modeTime, times[0], modeTime, times[0], modeTime, 64))
+	found = curs.fetchall()
+	newConn.close()
+	return [(i[0]) for i in found]
+
+def changeMode():
+	times[0] = 1
+	oldMode = getMode()
+	if isMode('M'):
+		setMode('Q')
+	elif isMode('Q'):
+		setMode('H')
+	elif isMode('H'):
+		setMode('D')
+	elif isMode('D'):
+		setMode('W')
+	else:
+		setMode('M')
+	print 'mode changed from', oldMode, 'to', getMode()
+	reprintCharts()
+
+def reprintCharts():
+	if not isMode('M'):
+		oldMode = getMode()
+		oldTime = times[0]
+		elements = readData()
+		print 'oldmode is current mode'
+		while isMode(oldMode) and oldTime == times[0]:
+			printChart(elements)
+			time.sleep(1.0)
+		print 'oldmode is not current mode'
+
+def future(channel):
+	print 'moved to future'
+	times[0] = times[0] - 1
+	reprintCharts()
+
+def past(channel):
+	print 'moved to past'
+	times[0] = times[0] + 1
+	reprintCharts()
+
+GPIO.add_event_detect(14, GPIO.FALLING, callback=changeModeClicked, bouncetime=300)
+GPIO.add_event_detect(15, GPIO.FALLING, callback=future, bouncetime=300)
+GPIO.add_event_detect(18, GPIO.FALLING, callback=past, bouncetime=300)
+
 
 restartDatabase = False
 
@@ -134,7 +254,7 @@ for slave in slaves:
 	id = cursor.fetchone()
 	if id is None:
 		cursor.execute('INSERT INTO sensor (address, name) VALUES (?, ?)', (slave, 'autoadded'))
-		cursor.commit()
+		connection.commit()
 		cursor.execute('SELECT id FROM sensor WHERE address LIKE ? LIMIT 1', (slave,))
 		id = cursor.fetchone()
 	slaveids[slave] = int(id[0])
@@ -161,15 +281,27 @@ while True:
 		temp = val / 1000
 		temps[slave] = temp
 
+		valid = re.search(r'YES', strf) is not None
+		if not valid:
+			print 'invalid read', temp, strf.replace('\n', '; ')
+
+		if valid and (temp > 84.9 or temp < 0.1):
+			valid = False
+			print 'valid read, but suspicious, omitting', temp
+
 		# pins... just debug
 		# print 'input 20', GPIO.input(20), '21', GPIO.input(21)
 
+		if valid:
 		# save to sqlite
-		cursor.execute(
-		"INSERT INTO reads (sensor_id, timestamp, value)  VALUES (?,julianday('now'),?)",
-		(id, temp))
-	
-		connection.commit()
+			cursor.execute(
+			"INSERT INTO reads (sensor_id, timestamp, value)  VALUES (?,julianday('now'),?)",
+			(id, temp))
+
+			try:	
+				connection.commit()
+			except sqlite3.OperationalError:
+				print 'oopsie daisy, we cant commit'
 
 	
 	temp = temps[defaultslave]
@@ -177,10 +309,6 @@ while True:
 
 	if counter < chartwidth - 1:
 		counter += 1
-
-	# Clear image buffer.
-	draw.rectangle((0,0,83,47), outline=255, fill=255)
-	# Enumerate characters and draw them offset vertically based on a sine wave.
 
 	mintemp = min(list)
 	maxtemp = max(list)
@@ -191,22 +319,27 @@ while True:
 
 	print datetime.now(), 'temp', list[0], 'min', mintemp, 'max', maxtemp
 
-	# draw the chart
-	for index, temp in enumerate(list):
-		y = height - (temp - minshown) / diffshown * height
-		x = width - counter + index -1
-		# counter checks how many elements are in list,
-		#draw.point([x, y])
-		draw.line(((x, y), (x, height)))
+	if isMode('M'):
 
-	draw.text((0,0), str(round(maxtemp,1)), font=font, fill=0)
-	draw.text((0,37), str(round(mintemp,1)), font=font, fill=0)
-	draw.text((0,12), str(round(temp,1)), font=font, fill=0)
-	draw.text((1,22), 'M', font=font, fill=0)
+		# Clear image buffer.
+		draw.rectangle((0,0,83,47), outline=255, fill=255)
 
-	# Draw the image buffer.
-	disp.image(image)
-	disp.display()
 
+		# draw the chart
+		for index, temp in enumerate(list):
+			y = height - (temp - minshown) / diffshown * height
+			x = width - counter + index -1
+			# counter checks how many elements are in list,
+			#draw.point([x, y])
+			draw.line(((x, y), (x, height)))
+
+		draw.text((0,0), str(round(maxtemp,1)), font=font, fill=0)
+		draw.text((0,37), str(round(mintemp,1)), font=font, fill=0)
+		draw.text((0,12), str(round(temp,1)), font=font, fill=0)
+		draw.text((1,22), 'M', font=font, fill=0)
+
+		# Draw the image buffer.
+		disp.image(image)
+		disp.display()
 
 GPIO.cleanup()
